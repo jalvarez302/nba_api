@@ -1,9 +1,15 @@
 import os
 import json
 import random
+import re
 import requests
+import tempfile
+import warnings
 
 from urllib.parse import quote_plus
+
+# Valid endpoint name pattern (alphanumeric, underscores, hyphens only)
+VALID_ENDPOINT_PATTERN = re.compile(r'^[a-zA-Z0-9_-]+$')
 
 try:
     from nba_api.library.debug.debug import DEBUG
@@ -93,8 +99,13 @@ class NBAHTTP:
     ):
         if not self.base_url:
             raise Exception("Cannot use send_api_request from _HTTP class.")
-        base_url = self.base_url.format(endpoint=endpoint)
+
+        # Security: Validate endpoint name to prevent injection attacks
         endpoint = endpoint.lower()
+        if not VALID_ENDPOINT_PATTERN.match(endpoint):
+            raise ValueError(f"Invalid endpoint name: {endpoint}. Endpoint must contain only alphanumeric characters, underscores, and hyphens.")
+
+        base_url = self.base_url.format(endpoint=endpoint)
         self.parameters = parameters
 
         if headers is None:
@@ -132,8 +143,13 @@ class NBAHTTP:
         parameters = sorted(parameters.items(), key=lambda kv: kv[0])
 
         if DEBUG and DEBUG_STORAGE:
+            warnings.warn(
+                "DEBUG_STORAGE is enabled. API responses will be cached to disk. "
+                "Do not use in production as this may leak sensitive data.",
+                UserWarning
+            )
             print(endpoint, parameters)
-            directory_name = "debug_storage"
+            directory_name = "nba_api_debug_storage"
             parameter_string = "&".join(
                 "{}={}".format(key, "" if val is None else quote_plus(str(val)))
                 for key, val in parameters
@@ -143,17 +159,16 @@ class NBAHTTP:
             file_name = "{}-{}.txt".format(
                 endpoint, md5(parameter_string.encode("utf-8")).hexdigest()
             )
-            file_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "debug", directory_name
-            )
+            # Security: Use system temp directory instead of source tree
+            file_path = os.path.join(tempfile.gettempdir(), directory_name)
             if not os.path.exists(file_path):
-                os.makedirs(file_path)
+                os.makedirs(file_path, mode=0o700)  # Restrictive permissions
             file_path = os.path.join(file_path, file_name)
             print(file_name, os.path.isfile(file_path))
             if os.path.isfile(file_path):
-                f = open(file_path, "r")
-                contents = f.read()
-                f.close()
+                # Security: Use context manager for proper file handling
+                with open(file_path, "r", encoding="utf-8") as f:
+                    contents = f.read()
                 print("loading from file...")
 
         if not contents:
@@ -170,9 +185,9 @@ class NBAHTTP:
 
         contents = self.clean_contents(contents)
         if DEBUG and DEBUG_STORAGE:
-            f = open(file_path, "w")
-            f.write(contents)
-            f.close()
+            # Security: Use context manager for proper file handling
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(contents)
             print(url)
 
         data = self.nba_response(response=contents, status_code=status_code, url=url)

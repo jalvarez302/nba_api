@@ -1,4 +1,5 @@
 import re
+import warnings
 from nba_api.stats.library.data import players, wnba_players
 from nba_api.stats.library.data import (
     player_index_id,
@@ -9,12 +10,43 @@ from nba_api.stats.library.data import (
 )
 import unicodedata
 
+# Security: Maximum pattern length to prevent ReDoS attacks
+MAX_PATTERN_LENGTH = 200
 
-def _find_players(regex_pattern, row_id, players=players):
+
+def _find_players(regex_pattern, row_id, players=players, safe_search=False):
+    """
+    Find players matching the regex pattern.
+
+    Args:
+        regex_pattern: The regex pattern to search for
+        row_id: The index of the player attribute to search
+        players: The list of players to search
+        safe_search: If True, escape the pattern to prevent ReDoS attacks.
+                     Use this when the pattern comes from untrusted user input.
+
+    Returns:
+        List of matching player dictionaries
+    """
+    # Security: Limit pattern length to prevent ReDoS
+    if len(regex_pattern) > MAX_PATTERN_LENGTH:
+        warnings.warn(
+            f"Pattern length exceeds {MAX_PATTERN_LENGTH} characters. Truncating for security.",
+            UserWarning
+        )
+        regex_pattern = regex_pattern[:MAX_PATTERN_LENGTH]
+
+    # Security: Optionally escape the pattern to prevent ReDoS
+    if safe_search:
+        regex_pattern = re.escape(regex_pattern)
+
     players_found = []
-    for player in players:
-        if re.search(_strip_accents(regex_pattern), _strip_accents(str(player[row_id])), flags=re.I):
-            players_found.append(_get_player_dict(player))
+    try:
+        for player in players:
+            if re.search(_strip_accents(regex_pattern), _strip_accents(str(player[row_id])), flags=re.I):
+                players_found.append(_get_player_dict(player))
+    except re.error as e:
+        raise ValueError(f"Invalid regex pattern: {e}")
     return players_found
 
 
@@ -72,16 +104,37 @@ def _get_player_dict(player_row):
     }
 
 
-def find_players_by_full_name(regex_pattern):
-    return _find_players(regex_pattern, player_index_full_name)
+def find_players_by_full_name(regex_pattern, safe_search=False):
+    """
+    Find players by full name using regex pattern.
+
+    Args:
+        regex_pattern: The pattern to search for
+        safe_search: If True, escape the pattern for literal matching (recommended for user input)
+    """
+    return _find_players(regex_pattern, player_index_full_name, safe_search=safe_search)
 
 
-def find_players_by_first_name(regex_pattern):
-    return _find_players(regex_pattern, player_index_first_name)
+def find_players_by_first_name(regex_pattern, safe_search=False):
+    """
+    Find players by first name using regex pattern.
+
+    Args:
+        regex_pattern: The pattern to search for
+        safe_search: If True, escape the pattern for literal matching (recommended for user input)
+    """
+    return _find_players(regex_pattern, player_index_first_name, safe_search=safe_search)
 
 
-def find_players_by_last_name(regex_pattern):
-    return _find_players(regex_pattern, player_index_last_name)
+def find_players_by_last_name(regex_pattern, safe_search=False):
+    """
+    Find players by last name using regex pattern.
+
+    Args:
+        regex_pattern: The pattern to search for
+        safe_search: If True, escape the pattern for literal matching (recommended for user input)
+    """
+    return _find_players(regex_pattern, player_index_last_name, safe_search=safe_search)
 
 
 def find_player_by_id(player_id):
@@ -100,16 +153,37 @@ def get_inactive_players():
     return _get_inactive_players()
 
 
-def find_wnba_players_by_full_name(regex_pattern):
-    return _find_players(regex_pattern, player_index_full_name, players=wnba_players)
+def find_wnba_players_by_full_name(regex_pattern, safe_search=False):
+    """
+    Find WNBA players by full name using regex pattern.
+
+    Args:
+        regex_pattern: The pattern to search for
+        safe_search: If True, escape the pattern for literal matching (recommended for user input)
+    """
+    return _find_players(regex_pattern, player_index_full_name, players=wnba_players, safe_search=safe_search)
 
 
-def find_wnba_players_by_first_name(regex_pattern):
-    return _find_players(regex_pattern, player_index_first_name, players=wnba_players)
+def find_wnba_players_by_first_name(regex_pattern, safe_search=False):
+    """
+    Find WNBA players by first name using regex pattern.
+
+    Args:
+        regex_pattern: The pattern to search for
+        safe_search: If True, escape the pattern for literal matching (recommended for user input)
+    """
+    return _find_players(regex_pattern, player_index_first_name, players=wnba_players, safe_search=safe_search)
 
 
-def find_wnba_players_by_last_name(regex_pattern):
-    return _find_players(regex_pattern, player_index_last_name, players=wnba_players)
+def find_wnba_players_by_last_name(regex_pattern, safe_search=False):
+    """
+    Find WNBA players by last name using regex pattern.
+
+    Args:
+        regex_pattern: The pattern to search for
+        safe_search: If True, escape the pattern for literal matching (recommended for user input)
+    """
+    return _find_players(regex_pattern, player_index_last_name, players=wnba_players, safe_search=safe_search)
 
 
 def find_wnba_player_by_id(player_id):
